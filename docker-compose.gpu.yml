@@ -1,0 +1,29 @@
+# NVIDIA GPU override. Only use this on a host with an NVIDIA GPU and the NVIDIA
+# container runtime (Docker Desktop + WSL2 on Windows, or nvidia-container-toolkit on Linux).
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile llm up --build
+#
+# The application code still checks for CUDA at runtime and falls back to CPU, so a wrong
+# guess here degrades performance rather than breaking the app.
+services:
+  backend:
+    build:
+      args:
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cu126
+    image: knowledge-assistant-backend:gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

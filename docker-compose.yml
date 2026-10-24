@@ -1,0 +1,122 @@
+# Mini Knowledge Assistant - local stack.
+#
+#   CPU (works everywhere):  docker compose --profile llm up --build
+#   NVIDIA GPU:               docker compose -f docker-compose.yml -f docker-compose.gpu.yml --profile llm up --build
+#   Demo mode (no LLM):       LLM_PROVIDER=mock docker compose up --build
+#
+# scripts/start.sh / scripts/start.ps1 detect the GPU and pick the right command for you.
+name: knowledge-assistant
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: knowledge
+      POSTGRES_PASSWORD: knowledge
+      POSTGRES_DB: knowledge
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U knowledge -d knowledge"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "${REDIS_PORT:-6380}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # Local LLM server. Only started with `--profile llm` (skipped in demo mode).
+  ollama:
+    image: ollama/ollama:0.35.1
+    profiles: ["llm"]
+    environment:
+      OLLAMA_KEEP_ALIVE: 30m
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # One-shot job: downloads the model on first start (cached in the `ollama` volume), then
+  # runs one tiny prompt so the model is already loaded into GPU/CPU memory when the first
+  # real question arrives (cold load takes ~30s+; OLLAMA_KEEP_ALIVE keeps it resident).
+  ollama-init:
+    image: ollama/ollama:0.35.1
+    profiles: ["llm"]
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama pull \"$$LLM_MODEL\" && ollama run \"$$LLM_MODEL\" 'Reply with OK.' > /dev/null && echo model ready"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      LLM_MODEL: ${LLM_MODEL:-llama3.2:3b}
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/cpu
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+    image: knowledge-assistant-backend:cpu
+    environment:
+      ENVIRONMENT: local
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DATABASE_URL: postgresql+asyncpg://knowledge:knowledge@db:5432/knowledge
+      TEST_DATABASE_URL: postgresql+asyncpg://knowledge:knowledge@db:5432/knowledge_test
+      REDIS_URL: redis://redis:6379/0
+      TEST_REDIS_URL: redis://redis:6379/1
+      CORS_ORIGINS: http://localhost:5173
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-local}
+      EMBEDDING_DEVICE: ${EMBEDDING_DEVICE:-auto}
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_MODEL: ${LLM_MODEL:-llama3.2:3b}
+      OLLAMA_BASE_URL: http://ollama:11434
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      # Wait for the model download when the LLM profile is active; ignored in demo mode.
+      ollama-init:
+        condition: service_completed_successfully
+        required: false
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+    image: knowledge-assistant-frontend
+    environment:
+      API_PROXY_TARGET: http://backend:8000
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  ollama:
