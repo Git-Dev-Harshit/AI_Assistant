@@ -5,9 +5,11 @@ from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Similarity scales differ per embedding model, so the relevance cut-off does too.
-# bge-small calibration on the seed articles: relevant questions scored >= 0.646,
-# unrelated ones <= 0.581 (see ARCHITECTURE.md, RAG design).
-_DEFAULT_MIN_SCORE = {"local": 0.62, "hash": 0.1}
+# For bge-small this is a coarse pre-filter, set low enough not to drop relevant questions
+# (they scored as low as 0.617 on the seed articles) while still skipping the LLM for
+# greetings and off-topic questions. Deciding whether the passages really answer the
+# question is left to the grounded prompt (see ARCHITECTURE.md, RAG design).
+_DEFAULT_MIN_SCORE = {"local": 0.55, "hash": 0.1}
 
 
 class Settings(BaseSettings):
@@ -67,7 +69,9 @@ class Settings(BaseSettings):
     llm_max_retries: int = Field(default=2, ge=0, le=5)
     llm_max_concurrency: int = Field(default=4, ge=1)
     llm_queue_timeout_s: float = Field(default=10.0, gt=0)
-    llm_temperature: float = Field(default=0.1, ge=0, le=2)
+    # Deterministic by default: same question + same context -> same answer.
+    llm_temperature: float = Field(default=0.0, ge=0, le=2)
+    llm_seed: int | None = 42
     llm_max_output_tokens: int = Field(default=512, ge=16, le=4_096)
 
     # --- Rate limiting (POST /ask) ---

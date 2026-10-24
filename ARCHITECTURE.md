@@ -155,31 +155,58 @@ chunks. HNSW, not IVFFlat, because it needs no training step and handles increme
 inserts well, which suits a knowledge base that grows one article at a time.
 
 **Relevance threshold.** The top-k results are filtered by a minimum cosine similarity
-(`RETRIEVAL_MIN_SCORE`). Without it, every question would get *some* context, and the
-LLM would be tempted to answer from it.
+(`RETRIEVAL_MIN_SCORE`, default **0.55** for bge-small). Its job is to skip the LLM for
+greetings and clearly off-topic questions. It is a coarse pre-filter; deciding whether
+the passages actually answer the question is left to the grounded prompt.
 
-The default for bge-small, **0.62**, was calibrated on the seed articles
-(`backend/scripts/seed.py`):
+Why not a strict threshold? On the seed articles the scores of relevant and unrelated
+questions overlap:
 
-| Questions | Top similarity |
-|---|---|
-| 9 relevant questions, including paraphrases such as "vpn keeps disconnecting" and "who pays customs fees" | 0.646 – 0.842 |
-| 6 unrelated questions | 0.365 – 0.581 (the highest is "office wifi password" vs the password-reset article) |
-| Second-best chunks for the relevant questions | up to 0.616 |
+| Question | Top similarity | Relevant? |
+|---|---|---|
+| "explain the escalation policy" | 0.617 | yes |
+| "who pays customs" | 0.630 | yes |
+| "What is the office wifi password?" (vs the onboarding article, which mentions passwords) | 0.641 | no |
+| "Can I bring my dog to the office?" | 0.570 | no |
+| "Hello" | 0.531 | no |
 
-So 0.62 keeps every relevant hit and drops both unrelated questions and most
-second-best noise. With a real corpus this should be re-calibrated on a labelled
-evaluation set. The hash fallback uses its own threshold (0.1), because its similarity
-scale is different.
+No single cut-off separates these. An earlier strict value (0.62) silently dropped real
+questions, so the threshold now favours recall, and the LLM declines off-topic context.
+The hash fallback uses its own threshold (0.1), because its similarity scale is
+different.
 
-**Grounded generation.** The system prompt tells the model to:
-- answer only from the numbered passages,
-- reply with a fixed "not found" sentence when they don't contain the answer,
-- cite passages as `[n]`,
-- treat passage text as data, not instructions (a basic prompt-injection guard, since
-  knowledge articles are user-submitted).
+**Grounded generation.** The prompt is written for a small (3B) model. It is an explicit
+decision procedure rather than a list of prohibitions:
+1. Decide which passages are about the question's topic, whether it is phrased as a
+   question, a command ("explain ..."), a topic ("refund policy") or without punctuation.
+2. If at least one passage is on topic, answer only from it and cite it as `[n]`.
+3. Otherwise, reply with one fixed "not found" sentence.
 
-Temperature is 0.1 and output is capped at 512 tokens.
+Passage text is treated as data, not instructions: a basic prompt-injection guard, since
+articles are user-submitted. The user message ends with an explicit answer cue.
+
+Generation is **deterministic** (temperature 0, fixed seed), so the same question and
+context always produce the same answer. Output is capped at 512 tokens.
+
+Two guards handle small-model quirks:
+- **Paraphrased declines** ("I couldn't find information about the office WiFi
+  password...") are recognised as declines, not reported as grounded answers.
+- **Content-free replies** (seen: only a copied passage header such as
+  `[1] (Source: Refund Policy)`) are replaced by a quote of the top passage, and a
+  warning is logged.
+
+**How the prompt and threshold were chosen.** Manual testing found that answerable
+questions were sometimes declined, depending on punctuation. The fix was measured
+rather than guessed, on 39 relevant questions (24 tuning plus 15 unseen) and 16
+unrelated ones, including a prompt-injection attempt:
+
+| Configuration | Relevant questions declined or missed | Unrelated questions answered |
+|---|---|---|
+| Original prompt, 0.62, temperature 0.1 | 3 refusals + 1 miss (tuning set); 2 + 2 (unseen set) | 0 |
+| New prompt, 0.55, deterministic, answer cue | 0 | 0 |
+
+The evaluation scripts are not part of the service. With a real corpus they would become
+a regression suite run whenever the prompt, the model or chunking changes.
 
 **Sources.** Every retrieved chunk is returned with:
 - `document_id`, `title`, `chunk_id`, `chunk_index`
