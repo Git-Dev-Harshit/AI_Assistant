@@ -6,6 +6,9 @@ if [ "$#" -gt 0 ]; then
   exec "$@"
 fi
 
+# Apply database migrations before accepting traffic (idempotent).
+alembic upgrade head
+
 exec uvicorn app.main:app \
   --host 0.0.0.0 \
   --port 8000 \
