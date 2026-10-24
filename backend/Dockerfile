@@ -25,16 +25,19 @@ COPY requirements.txt requirements-dev.txt ./
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --index-url "${PIP_INDEX_URL}" -r requirements.txt -r requirements-dev.txt
 
+RUN useradd --create-home --uid 1000 appuser && chown appuser /app
+
 # Bake the embedding model into the image: no download at runtime, works offline,
 # and every container starts with exactly the same model files.
 ARG EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
 ENV HF_HOME=/opt/hf-cache
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${EMBEDDING_MODEL}', device='cpu')"
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${EMBEDDING_MODEL}', device='cpu')" \
+    && chown -R appuser /opt/hf-cache
 ENV HF_HUB_OFFLINE=1
 
-COPY . .
-
-RUN useradd --create-home --uid 1000 appuser && chown -R appuser /app /opt/hf-cache
+# Source changes only invalidate this layer. Ownership is set while copying, so no
+# recursive chown layer duplicates the application or model files on every rebuild.
+COPY --chown=appuser . .
 USER appuser
 
 EXPOSE 8000
