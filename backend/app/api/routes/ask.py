@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.client import client_identity
 from app.api.deps import ServicesDep, SessionDep, SettingsDep
+from app.api.rate_limit import enforce_ask_rate_limit
 from app.schemas.ask import AskRequest, AskResponse
 from app.services.qa import RetrievalConfig, answer_question
 
@@ -14,8 +15,11 @@ router = APIRouter(tags=["ask"])
     "/ask",
     response_model=AskResponse,
     summary="Ask a question and get a grounded answer with sources",
+    # Runs before the handler (and before body validation), so rejected requests are cheap.
+    dependencies=[Depends(enforce_ask_rate_limit)],
     responses={
         422: {"description": "Invalid question"},
+        429: {"description": "Rate limit exceeded (see Retry-After)"},
         503: {"description": "Embedding model, database or LLM unavailable"},
         504: {"description": "LLM timed out"},
     },

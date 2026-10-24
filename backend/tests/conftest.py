@@ -15,6 +15,7 @@ from app.db.session import create_session_factory
 from app.main import create_app
 from app.services.embeddings import HashEmbeddings
 from app.services.llm import Prompt
+from app.services.rate_limit import InMemoryRateLimiter
 
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql+asyncpg://knowledge:knowledge@localhost:5433/knowledge_test"
@@ -32,6 +33,8 @@ def settings() -> Settings:
         # Must match the providers injected in `services` below.
         embedding_provider="hash",
         llm_provider="mock",
+        rate_limit_backend="memory",
+        ask_rate_limit_per_minute=10,
     )
 
 
@@ -79,7 +82,7 @@ def fake_llm() -> FakeLLM:
 
 
 @pytest.fixture
-def services(engine: AsyncEngine, fake_llm: FakeLLM) -> Services:
+def services(settings: Settings, engine: AsyncEngine, fake_llm: FakeLLM) -> Services:
     return Services(
         engine=engine,
         session_factory=create_session_factory(engine),
@@ -87,6 +90,7 @@ def services(engine: AsyncEngine, fake_llm: FakeLLM) -> Services:
         device=DeviceInfo("cpu", "CPU"),
         embedder=HashEmbeddings(EMBEDDING_DIM),
         llm=fake_llm,
+        rate_limiter=InMemoryRateLimiter(settings.ask_rate_limit_per_minute),
     )
 
 
