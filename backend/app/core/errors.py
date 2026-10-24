@@ -79,6 +79,11 @@ class ServiceUnavailableError(AppError):
     message = "A required service is temporarily unavailable. Please try again shortly."
 
 
+class DatabaseUnavailableError(ServiceUnavailableError):
+    code = "DATABASE_UNAVAILABLE"
+    message = "The database is temporarily unavailable. Please try again shortly."
+
+
 class UpstreamTimeoutError(AppError):
     status_code = status.HTTP_504_GATEWAY_TIMEOUT
     code = "UPSTREAM_TIMEOUT"
@@ -109,7 +114,9 @@ _STATUS_CODES = {
 
 async def _app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     log = logger.error if exc.status_code >= 500 else logger.info
-    log("request_failed", status_code=exc.status_code, error_code=exc.code, error=str(exc))
+    # The client gets the stable code; the log keeps the underlying cause for diagnosis.
+    cause = repr(exc.__cause__)[:300] if exc.__cause__ is not None else None
+    log("request_failed", status_code=exc.status_code, error_code=exc.code, error=str(exc), cause=cause)
     return JSONResponse(
         status_code=exc.status_code,
         content=error_body(exc.code, exc.message, _request_id(request), exc.details),
@@ -160,6 +167,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(AppError, _app_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, _validation_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(StarletteHTTPException, _http_exception_handler)  # type: ignore[arg-type]
-    # Database connectivity problems (refused connection, pool exhausted, statement timeout).
-    for exc_type in (OperationalError, DBAPIError, SQLAlchemyTimeoutError, ConnectionRefusedError):
+    # Driver/pool errors (pool exhausted, statement timeout, connection lost mid-query).
+    # Connect-time network failures are translated in db/session.py instead.
+    for exc_type in (OperationalError, DBAPIError, SQLAlchemyTimeoutError):
         app.add_exception_handler(exc_type, _database_error_handler)
