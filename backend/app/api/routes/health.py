@@ -26,6 +26,7 @@ async def health(services: ServicesDep, settings: SettingsDep) -> dict[str, Any]
             "model": services.embedder.model,
             "device": services.embedder.device,
         },
+        "llm": {"provider": services.llm.name, "model": services.llm.model},
     }
 
 
@@ -52,7 +53,10 @@ async def _run_checks(services: ServicesDep) -> dict[str, str]:
         await services.redis.ping()
         return "ok"
 
-    probes = {"database": database, "redis": redis}
+    async def llm() -> str:
+        return await services.llm.health()
+
+    probes = {"database": database, "redis": redis, "llm": llm}
     results: dict[str, str] = {}
     for name, probe in probes.items():
         try:

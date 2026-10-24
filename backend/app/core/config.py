@@ -4,6 +4,11 @@ from typing import Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Similarity scales differ per embedding model, so the relevance cut-off does too.
+# bge-small calibration on the seed articles: relevant questions scored >= 0.646,
+# unrelated ones <= 0.581 (see ARCHITECTURE.md, RAG design).
+_DEFAULT_MIN_SCORE = {"local": 0.62, "hash": 0.1}
+
 
 class Settings(BaseSettings):
     """Application configuration, loaded from environment variables (or a local .env file).
@@ -45,6 +50,31 @@ class Settings(BaseSettings):
     embedding_device: Literal["auto", "cuda", "cpu"] = "auto"
     embedding_query_instruction: str = "Represent this sentence for searching relevant passages: "
     embedding_max_concurrency: int = Field(default=2, ge=1)
+
+    # --- Retrieval ---
+    retrieval_top_k: int = Field(default=4, ge=1, le=10)
+    # Minimum cosine similarity for a chunk to count as relevant. Leave unset to use a
+    # default calibrated for the configured embedding provider.
+    retrieval_min_score: float | None = Field(default=None, ge=-1, le=1)
+
+    # --- LLM ---
+    # "ollama": local model via Ollama. "mock": demo fallback, no model (clearly labelled).
+    llm_provider: Literal["ollama", "mock"] = "ollama"
+    llm_model: str = "llama3.2:3b"
+    ollama_base_url: str = "http://localhost:11434"
+    llm_timeout_s: float = Field(default=120.0, gt=0)
+    llm_connect_timeout_s: float = Field(default=3.0, gt=0)
+    llm_max_retries: int = Field(default=2, ge=0, le=5)
+    llm_max_concurrency: int = Field(default=4, ge=1)
+    llm_queue_timeout_s: float = Field(default=10.0, gt=0)
+    llm_temperature: float = Field(default=0.1, ge=0, le=2)
+    llm_max_output_tokens: int = Field(default=512, ge=16, le=4_096)
+
+    @property
+    def effective_min_score(self) -> float:
+        if self.retrieval_min_score is not None:
+            return self.retrieval_min_score
+        return _DEFAULT_MIN_SCORE[self.embedding_provider]
 
     @model_validator(mode="after")
     def _check_chunking(self) -> "Settings":

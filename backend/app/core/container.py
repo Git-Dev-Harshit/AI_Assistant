@@ -16,6 +16,7 @@ from app.core.device import DeviceInfo, resolve_device
 from app.db.models import EMBEDDING_DIM
 from app.db.session import create_engine, create_session_factory
 from app.services.embeddings import EmbeddingProvider, HashEmbeddings, SentenceTransformerEmbeddings
+from app.services.llm import LLMProvider, MockLLM, OllamaLLM
 
 logger = structlog.get_logger(__name__)
 
@@ -27,6 +28,7 @@ class Services:
     redis: Redis | None
     device: DeviceInfo
     embedder: EmbeddingProvider
+    llm: LLMProvider
 
 
 async def build_services(settings: Settings) -> Services:
@@ -42,12 +44,15 @@ async def build_services(settings: Settings) -> Services:
     )
     device = resolve_device(settings.embedding_device)
     embedder = await _build_embedder(settings, device)
+    llm = _build_llm(settings)
     logger.info(
         "services_ready",
         device=device.device,
         device_name=device.name,
         embedding_provider=embedder.name,
         embedding_model=embedder.model,
+        llm_provider=llm.name,
+        llm_model=llm.model,
     )
     return Services(
         engine=engine,
@@ -55,6 +60,7 @@ async def build_services(settings: Settings) -> Services:
         redis=redis,
         device=device,
         embedder=embedder,
+        llm=llm,
     )
 
 
@@ -74,7 +80,25 @@ async def _build_embedder(settings: Settings, device: DeviceInfo) -> EmbeddingPr
     )
 
 
+def _build_llm(settings: Settings) -> LLMProvider:
+    if settings.llm_provider == "mock":
+        logger.warning("using_mock_llm", note="demo fallback, answers are extracted passages")
+        return MockLLM()
+    return OllamaLLM(
+        settings.ollama_base_url,
+        settings.llm_model,
+        timeout_s=settings.llm_timeout_s,
+        connect_timeout_s=settings.llm_connect_timeout_s,
+        max_retries=settings.llm_max_retries,
+        max_concurrency=settings.llm_max_concurrency,
+        queue_timeout_s=settings.llm_queue_timeout_s,
+        temperature=settings.llm_temperature,
+        max_output_tokens=settings.llm_max_output_tokens,
+    )
+
+
 async def close_services(services: Services) -> None:
+    await services.llm.aclose()
     if services.redis is not None:
         await services.redis.aclose()
     await services.engine.dispose()
