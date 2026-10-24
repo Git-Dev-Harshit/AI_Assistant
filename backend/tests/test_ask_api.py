@@ -1,7 +1,12 @@
-from sqlalchemy import func, select
+import httpx
+from sqlalchemy import func, select, text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.db.models import QuestionLog
+from app.db.session import create_session_factory
+from app.main import create_app
 from app.services.llm import LLMTimeoutError, LLMUnavailableError, MockLLM
+from tests.conftest import TEST_DATABASE_URL
 
 REFUND = {
     "title": "Refund Policy",
@@ -122,3 +127,28 @@ async def test_demo_mode_is_clearly_labelled(client, services):
     body = response.json()
     assert body["mode"] == "demo"
     assert body["answer"].startswith("[DEMO MODE")
+
+
+async def test_db_connection_is_released_while_llm_generates(settings, services, engine, fake_llm):
+    # A pool with exactly one connection: if /ask held it during generation, the LLM's
+    # own checkout below would time out.
+    single = create_async_engine(TEST_DATABASE_URL, pool_size=1, max_overflow=0, pool_timeout=1)
+    services.engine = single
+    services.session_factory = create_session_factory(single)
+
+    async def generate_while_checking_pool(prompt):
+        async with single.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return "Refunds are available within 30 days [1]."
+
+    fake_llm.generate = generate_while_checking_pool
+    app = create_app(settings, services)
+    try:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+            await seed(client)
+            response = await client.post("/ask", json={"question": "How many days do I have for a refund?"})
+    finally:
+        await single.dispose()
+
+    assert response.status_code == 200, response.text
+    assert response.json()["mode"] == "llm"

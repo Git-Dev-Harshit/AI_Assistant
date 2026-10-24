@@ -40,6 +40,9 @@ async def answer_question(
 
     query_vector = await embedder.embed_query(question)
     hits = await search_chunks(session, query_vector, top_k=config.top_k, min_score=config.min_score)
+    # End the read transaction so its pooled connection is returned before the slow LLM
+    # call; the history write below checks out a connection again only briefly.
+    await session.rollback()
 
     if not hits:
         # Nothing relevant: answer honestly without spending an LLM call.
