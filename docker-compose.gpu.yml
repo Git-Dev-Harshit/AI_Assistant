@@ -18,3 +18,12 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
+
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
