@@ -71,6 +71,34 @@ ARTICLES = [
             "Priority 3 and 4 tickets follow the normal queue with a target first response of one business day."
         ),
     },
+    {
+        # Long enough to be split into several chunks, to demonstrate multi-chunk retrieval.
+        "title": "New Employee IT Onboarding Guide",
+        "content": (
+            "Laptop setup. New employees receive a laptop on their first day from the IT service desk on the "
+            "second floor. The laptop is pre-enrolled in device management, so the user only needs to sign in "
+            "with their company email address and the temporary password sent to their manager. On first "
+            "sign-in the user must set a new password of at least 14 characters and enrol in multi-factor "
+            "authentication using the authenticator app.\n\n"
+            "Accounts and access. Email, chat and the HR portal are available immediately after the first "
+            "sign-in. Access to engineering tools such as the source code repository and the CI system is "
+            "requested by the manager through the access request form and is usually granted within one "
+            "business day. Access to production systems requires an additional security training module and "
+            "approval from the team lead, and is reviewed every quarter.\n\n"
+            "Software installation. Approved software is installed from the self-service software center "
+            "without administrator rights. Software that is not in the catalogue must be requested through a "
+            "service desk ticket with a business justification; the security team reviews these requests "
+            "within three business days. Personal software, browser extensions that read page content and "
+            "unlicensed tools must not be installed on company devices.\n\n"
+            "Hardware and peripherals. Each employee may order one monitor, a keyboard, a mouse and a headset "
+            "through the equipment portal. Items are delivered to the office within five business days, or to "
+            "a home address for remote employees within seven business days. Lost or stolen devices must be "
+            "reported to the service desk within 24 hours so the device can be locked and wiped remotely.\n\n"
+            "Getting help. The IT service desk is open from 8 AM to 6 PM on business days and can be reached "
+            "through the support portal, the help chat channel or extension 4357. Outside these hours, urgent "
+            "issues that block work can be reported to the on-call phone line listed on the intranet."
+        ),
+    },
 ]
 
 
