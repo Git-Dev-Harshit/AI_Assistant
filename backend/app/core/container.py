@@ -17,6 +17,7 @@ from app.db.models import EMBEDDING_DIM
 from app.db.session import create_engine, create_session_factory
 from app.services.embeddings import EmbeddingProvider, HashEmbeddings, SentenceTransformerEmbeddings
 from app.services.llm import LLMProvider, MockLLM, OllamaLLM
+from app.services.rate_limit import InMemoryRateLimiter, RateLimiter, RedisRateLimiter
 
 logger = structlog.get_logger(__name__)
 
@@ -29,6 +30,7 @@ class Services:
     device: DeviceInfo
     embedder: EmbeddingProvider
     llm: LLMProvider
+    rate_limiter: RateLimiter
 
 
 async def build_services(settings: Settings) -> Services:
@@ -61,6 +63,7 @@ async def build_services(settings: Settings) -> Services:
         device=device,
         embedder=embedder,
         llm=llm,
+        rate_limiter=_build_rate_limiter(settings, redis),
     )
 
 
@@ -95,6 +98,15 @@ def _build_llm(settings: Settings) -> LLMProvider:
         temperature=settings.llm_temperature,
         max_output_tokens=settings.llm_max_output_tokens,
     )
+
+
+def _build_rate_limiter(settings: Settings, redis: Redis | None) -> RateLimiter:
+    limit = settings.ask_rate_limit_per_minute
+    if settings.rate_limit_backend == "redis" and redis is not None:
+        return RedisRateLimiter(redis, limit, fail_open=settings.rate_limit_fail_open)
+    if settings.rate_limit_backend == "redis":
+        logger.warning("rate_limit_redis_not_configured", fallback="memory")
+    return InMemoryRateLimiter(limit)
 
 
 async def close_services(services: Services) -> None:

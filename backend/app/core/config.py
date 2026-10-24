@@ -70,6 +70,13 @@ class Settings(BaseSettings):
     llm_temperature: float = Field(default=0.1, ge=0, le=2)
     llm_max_output_tokens: int = Field(default=512, ge=16, le=4_096)
 
+    # --- Rate limiting (POST /ask) ---
+    # "redis": shared across all API instances. "memory": single process only.
+    rate_limit_backend: Literal["redis", "memory"] = "redis"
+    ask_rate_limit_per_minute: int = Field(default=20, ge=1)
+    # If Redis is unreachable: allow (true) or reject with 503 (false) requests.
+    rate_limit_fail_open: bool = True
+
     @property
     def effective_min_score(self) -> float:
         if self.retrieval_min_score is not None:

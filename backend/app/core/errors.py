@@ -64,12 +64,11 @@ class RateLimitedError(AppError):
     code = "RATE_LIMITED"
     message = "Too many requests. Please slow down."
 
-    def __init__(self, retry_after_s: int, message: str | None = None) -> None:
-        super().__init__(
-            message,
-            details={"retry_after_seconds": retry_after_s},
-            headers={"Retry-After": str(retry_after_s)},
-        )
+    def __init__(self, retry_after_s: int, *, limit: int | None = None, message: str | None = None) -> None:
+        headers = {"Retry-After": str(retry_after_s)}
+        if limit is not None:
+            headers |= {"X-RateLimit-Limit": str(limit), "X-RateLimit-Remaining": "0"}
+        super().__init__(message, details={"retry_after_seconds": retry_after_s}, headers=headers)
 
 
 class ServiceUnavailableError(AppError):
