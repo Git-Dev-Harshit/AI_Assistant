@@ -96,6 +96,7 @@ def _build_llm(settings: Settings) -> LLMProvider:
         max_concurrency=settings.llm_max_concurrency,
         queue_timeout_s=settings.llm_queue_timeout_s,
         temperature=settings.llm_temperature,
+        seed=settings.llm_seed,
         max_output_tokens=settings.llm_max_output_tokens,
     )
 
