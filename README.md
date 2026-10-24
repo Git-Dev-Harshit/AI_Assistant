@@ -48,7 +48,9 @@ git clone <this-repo> && cd <this-repo>
 ```
 
 The script checks whether an NVIDIA GPU is usable from Docker and starts the stack in
-GPU or CPU mode accordingly. Then open:
+GPU or CPU mode accordingly. It runs everything in the background and returns once all
+services are healthy, printing the URLs and the commands to view logs or stop. Then
+open:
 
 | What | URL |
 |---|---|
@@ -78,7 +80,7 @@ docker compose exec backend python -m scripts.seed
 | **Auto (recommended)** | `.\scripts\start.ps1` / `./scripts/start.sh` | GPU if usable, otherwise CPU |
 | Force CPU | `start.ps1 -Cpu` / `start.sh --cpu` | Test the CPU path on a GPU machine |
 | **Demo (no LLM)** | `start.ps1 -Mock` / `start.sh --mock` | No 2 GB model download. Real embeddings and retrieval; the "answer" quotes the top passages and is clearly labelled `[DEMO MODE]` |
-| Background | add `-Detach` / `--detach` | |
+| Foreground (stream logs) | add `-Attach` / `--attach` | Watch all service logs live; Ctrl+C stops the stack |
 
 Equivalent raw Compose commands:
 
