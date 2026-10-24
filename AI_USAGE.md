@@ -62,14 +62,14 @@ These came from my own requirements and judgement, not from the tool:
    A later outage test showed that the narrowing had missed one real case (see
    below), and that was fixed precisely rather than by widening the handler again.
 
-4. **Changed: a guessed relevance threshold.** The similarity cut-off that decides
-   "nothing relevant, don't call the LLM" started as a round guess (0.6). It is now
-   calibrated from measured scores of relevant and unrelated questions on the seed
-   data:
-   - relevant questions: 0.646 or higher
-   - unrelated questions: 0.581 or lower
-
-   The final value is 0.62. The numbers are recorded in `ARCHITECTURE.md`.
+4. **Changed twice: the relevance threshold.** The similarity cut-off that decides
+   "nothing relevant, don't call the LLM" started as a round guess (0.6). It was then
+   calibrated from measured scores on the seed data (0.62). My own manual testing then
+   showed that this still dropped real questions such as "explain the escalation
+   policy" (0.617), while an unrelated question scored 0.641. No single cut-off
+   separates them. The threshold is now a lenient pre-filter (0.55), and the decision
+   is left to the grounded prompt, which was re-tuned and measured for exactly that
+   (see below).
 
 5. **Kept after checking the reasoning: no retries on LLM read timeouts.** Retrying
    only connection errors, 5xx and 429 initially looked like an omission. I kept it:
@@ -89,6 +89,7 @@ done.
 | Database outage returned `500` instead of `503` | Stopping the database container on purpose | Translate connect-time network errors in the engine's connection factory, the one place they can only mean "database unreachable" |
 | First question after startup took ~37 s | Timing the first answer after a fresh start | Warm up the model after pulling it. The first answer now takes 0.3 s |
 | Slow image rebuilds, duplicated layers | Timing rebuilds after small code changes | A recursive `chown` layer re-ran on every source change; replaced with `COPY --chown` |
+| **Answerable questions declined depending on punctuation**: "when can i request a refund policy" got "couldn't find information", but the same text with a trailing "." was answered | **My manual testing in the UI.** The question history table showed the right article had been retrieved (score 0.79), so the LLM, not retrieval, was at fault | Built a 55-question evaluation (with an unseen hold-out set) before changing anything. Rewrote the prompt as an explicit decision procedure, made generation deterministic, lowered the pre-filter threshold, added an answer cue and guards for paraphrased declines and empty replies. Result: 0 failures on relevant questions (was 4 of 15 unseen), unrelated questions still declined |
 
 ## Where I did not rely on AI
 
