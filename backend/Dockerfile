@@ -25,9 +25,16 @@ COPY requirements.txt requirements-dev.txt ./
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --index-url "${PIP_INDEX_URL}" -r requirements.txt -r requirements-dev.txt
 
+# Bake the embedding model into the image: no download at runtime, works offline,
+# and every container starts with exactly the same model files.
+ARG EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+ENV HF_HOME=/opt/hf-cache
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('${EMBEDDING_MODEL}', device='cpu')"
+ENV HF_HUB_OFFLINE=1
+
 COPY . .
 
-RUN useradd --create-home --uid 1000 appuser && chown -R appuser /app
+RUN useradd --create-home --uid 1000 appuser && chown -R appuser /app /opt/hf-cache
 USER appuser
 
 EXPOSE 8000

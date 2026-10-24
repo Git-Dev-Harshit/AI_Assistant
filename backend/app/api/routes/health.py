@@ -21,6 +21,11 @@ async def health(services: ServicesDep, settings: SettingsDep) -> dict[str, Any]
         "version": __version__,
         "environment": settings.environment,
         "compute": {"device": services.device.device, "name": services.device.name},
+        "embedding": {
+            "provider": services.embedder.name,
+            "model": services.embedder.model,
+            "device": services.embedder.device,
+        },
     }
 
 

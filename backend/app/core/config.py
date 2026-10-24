@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -33,6 +33,24 @@ class Settings(BaseSettings):
     # --- Redis (shared rate-limit counters) ---
     redis_url: str | None = "redis://localhost:6380/0"
     redis_timeout_s: float = Field(default=0.5, gt=0)
+
+    # --- Chunking ---
+    chunk_size: int = Field(default=800, ge=100, le=8_000)
+    chunk_overlap: int = Field(default=150, ge=0)
+
+    # --- Embeddings ---
+    # "local": sentence-transformers model on GPU/CPU. "hash": no-download lexical fallback.
+    embedding_provider: Literal["local", "hash"] = "local"
+    embedding_model: str = "BAAI/bge-small-en-v1.5"
+    embedding_device: Literal["auto", "cuda", "cpu"] = "auto"
+    embedding_query_instruction: str = "Represent this sentence for searching relevant passages: "
+    embedding_max_concurrency: int = Field(default=2, ge=1)
+
+    @model_validator(mode="after")
+    def _check_chunking(self) -> "Settings":
+        if self.chunk_overlap >= self.chunk_size:
+            raise ValueError("CHUNK_OVERLAP must be smaller than CHUNK_SIZE")
+        return self
 
     @property
     def cors_origin_list(self) -> list[str]:
