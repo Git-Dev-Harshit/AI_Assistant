@@ -134,3 +134,14 @@ async def test_excess_concurrency_fails_fast_with_busy_error():
 
     release.set()
     assert await first
+
+
+async def test_generation_is_deterministic_by_default():
+    captured = []
+    llm, _ = make_llm(lambda request, n: captured.append(request) or ok())
+
+    await llm.generate(PROMPT)
+
+    options = __import__("json").loads(captured[0].content)["options"]
+    assert options["temperature"] == 0
+    assert options["seed"] == 42

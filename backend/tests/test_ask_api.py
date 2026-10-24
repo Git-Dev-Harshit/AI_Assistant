@@ -55,7 +55,7 @@ async def test_prompt_contains_question_and_retrieved_context(client, fake_llm):
     prompt = fake_llm.prompts[-1]
     assert "What does VPN error 809 mean?" in prompt.user
     assert "[1] (Source: VPN Troubleshooting)" in prompt.user
-    assert "ONLY the numbered context passages" in prompt.system
+    assert "answer using only the facts in those passages" in prompt.system
 
 
 async def test_unrelated_question_returns_no_context_without_calling_llm(client, fake_llm):
@@ -152,3 +152,27 @@ async def test_db_connection_is_released_while_llm_generates(settings, services,
 
     assert response.status_code == 200, response.text
     assert response.json()["mode"] == "llm"
+
+
+async def test_paraphrased_decline_is_not_reported_as_grounded(client, fake_llm):
+    # Small models sometimes decline in their own words instead of the exact sentence.
+    await seed(client)
+    fake_llm.answer = "I couldn't find information about the office WiFi password in the provided passages."
+
+    response = await client.post("/ask", json={"question": "How do refunds work?"})
+
+    assert response.status_code == 200
+    assert response.json()["grounded"] is False
+
+
+async def test_reply_without_content_falls_back_to_the_top_passage(client, fake_llm):
+    # Seen with llama3.2:3b: the reply was only the copied passage header.
+    await seed(client)
+    fake_llm.answer = "[1] (Source: Refund Policy)"
+
+    response = await client.post("/ask", json={"question": "How many days do I have to request a refund?"})
+
+    body = response.json()
+    assert body["answer"].startswith('From "Refund Policy": Customers can request a full refund within 30 days')
+    assert body["grounded"] is True
+    assert body["sources"][0]["cited"] is True

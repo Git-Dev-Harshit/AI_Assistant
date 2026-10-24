@@ -12,7 +12,7 @@ from app.db.models import QuestionLog
 from app.schemas.ask import AskResponse, Source
 from app.services.embeddings import EmbeddingProvider
 from app.services.llm import ContextPassage, LLMProvider
-from app.services.prompts import NO_ANSWER, build_prompt
+from app.services.prompts import NO_ANSWER, build_prompt, extractive_answer, is_degenerate, is_no_answer
 from app.services.retrieval import RetrievedChunk, search_chunks
 
 logger = structlog.get_logger(__name__)
@@ -50,11 +50,16 @@ async def answer_question(
     else:
         passages = [ContextPassage(number=i, title=h.title, content=h.content) for i, h in enumerate(hits, 1)]
         answer = await llm.generate(build_prompt(question, passages))
+        if is_degenerate(answer):
+            # Guard against small-model replies with no content (e.g. only "[1]"): give the
+            # user the most relevant passage rather than an empty answer.
+            logger.warning("llm_degenerate_answer", reply=answer[:100])
+            answer = extractive_answer(passages)
         mode = "demo" if llm.name == "mock" else "llm"
         model = llm.model
         cited = _cited_numbers(answer)
 
-    declined = NO_ANSWER.lower() in answer.lower()
+    declined = is_no_answer(answer)
     sources = [_source(hit, number in cited) for number, hit in enumerate(hits, 1)]
     latency_ms = int((time.perf_counter() - started) * 1000)
 

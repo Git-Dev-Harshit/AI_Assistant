@@ -101,7 +101,8 @@ class OllamaLLM:
         max_retries: int = 2,
         max_concurrency: int = 4,
         queue_timeout_s: float = 10.0,
-        temperature: float = 0.1,
+        temperature: float = 0.0,
+        seed: int | None = 42,
         max_output_tokens: int = 512,
         backoff_base_s: float = 0.5,
         max_retry_after_s: float = 10.0,
@@ -110,8 +111,11 @@ class OllamaLLM:
         self.model = model
         self._max_retries = max_retries
         self._queue_timeout_s = queue_timeout_s
-        self._temperature = temperature
-        self._max_output_tokens = max_output_tokens
+        self._options: dict[str, float | int] = {"temperature": temperature, "num_predict": max_output_tokens}
+        if seed is not None:
+            # With temperature 0 and a fixed seed, the same question and context always give
+            # the same answer, instead of being answered once and declined the next time.
+            self._options["seed"] = seed
         self._backoff_base_s = backoff_base_s
         self._max_retry_after_s = max_retry_after_s
         self._semaphore = asyncio.Semaphore(max_concurrency)
@@ -142,7 +146,7 @@ class OllamaLLM:
                 {"role": "system", "content": prompt.system},
                 {"role": "user", "content": prompt.user},
             ],
-            "options": {"temperature": self._temperature, "num_predict": self._max_output_tokens},
+            "options": self._options,
         }
         attempt = 0
         while True:
