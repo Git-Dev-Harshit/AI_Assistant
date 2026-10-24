@@ -52,13 +52,17 @@ services:
       timeout: 5s
       retries: 20
 
-  # One-shot job: downloads the model on first start (cached in the `ollama` volume).
+  # One-shot job: downloads the model on first start (cached in the `ollama` volume), then
+  # runs one tiny prompt so the model is already loaded into GPU/CPU memory when the first
+  # real question arrives (cold load takes ~30s+; OLLAMA_KEEP_ALIVE keeps it resident).
   ollama-init:
     image: ollama/ollama:0.35.1
     profiles: ["llm"]
-    entrypoint: ["ollama", "pull", "${LLM_MODEL:-llama3.2:3b}"]
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["ollama pull \"$$LLM_MODEL\" && ollama run \"$$LLM_MODEL\" 'Reply with OK.' > /dev/null && echo model ready"]
     environment:
       OLLAMA_HOST: http://ollama:11434
+      LLM_MODEL: ${LLM_MODEL:-llama3.2:3b}
     depends_on:
       ollama:
         condition: service_healthy
