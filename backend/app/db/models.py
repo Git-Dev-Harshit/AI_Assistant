@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 # Must match the embedding model's output size. Changing it requires a migration and
@@ -71,4 +71,26 @@ class Chunk(Base):
             postgresql_with={"m": 16, "ef_construction": 64},
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
+    )
+
+
+class QuestionLog(Base):
+    """Question history: what was asked, what was answered and from which sources.
+
+    Useful for analytics (top questions, unanswered topics), evaluation datasets and
+    debugging bad answers.
+    """
+
+    __tablename__ = "questions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    client_id: Mapped[str] = mapped_column(String(100), index=True)
+    question: Mapped[str] = mapped_column(Text)
+    answer: Mapped[str] = mapped_column(Text)
+    sources: Mapped[list[dict]] = mapped_column(JSONB, default=list)
+    mode: Mapped[str] = mapped_column(String(20))  # llm | demo | no_context
+    model: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    latency_ms: Mapped[int] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=_utcnow, server_default=func.now(), index=True
     )

@@ -1,10 +1,12 @@
 # Start the full stack, using an NVIDIA GPU when one is usable and the CPU otherwise.
 #
-#   .\scripts\start.ps1            auto-detect GPU
+#   .\scripts\start.ps1            auto-detect GPU, real local LLM (Ollama)
 #   .\scripts\start.ps1 -Cpu       force CPU even if a GPU is present
+#   .\scripts\start.ps1 -Mock      demo mode: no LLM download, answers quote the sources
 #   .\scripts\start.ps1 -Detach    run in the background
 param(
     [switch]$Cpu,
+    [switch]$Mock,
     [switch]$Detach
 )
 
@@ -26,6 +28,14 @@ if (-not $Cpu -and (Test-GpuUsable)) {
     $composeArgs += @("-f", "docker-compose.gpu.yml")
 } else {
     Write-Host "No usable NVIDIA GPU (or -Cpu given) -> CPU mode"
+}
+
+if ($Mock) {
+    Write-Host "Demo mode: LLM_PROVIDER=mock (Ollama is not started)"
+    $env:LLM_PROVIDER = "mock"
+} else {
+    $env:LLM_PROVIDER = "ollama"
+    $composeArgs += @("--profile", "llm")
 }
 
 $composeArgs += @("up", "--build")

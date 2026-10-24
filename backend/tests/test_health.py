@@ -36,4 +36,14 @@ async def test_ready_reports_database_status(client):
     response = await client.get("/ready")
 
     assert response.status_code == 200
-    assert response.json()["checks"] == {"database": "ok", "redis": "disabled"}
+    assert response.json()["checks"] == {"database": "ok", "redis": "disabled", "llm": "ok"}
+
+
+async def test_ready_reports_degraded_dependencies(client, fake_llm):
+    fake_llm.health_status = "model_missing"
+
+    response = await client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json()["status"] == "degraded"
+    assert response.json()["checks"]["llm"] == "model_missing"
